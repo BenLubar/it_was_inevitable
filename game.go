@@ -95,9 +95,10 @@ func dwarfFortress(ctx context.Context, ch chan<- string) {
 				}
 			case line := <-addch:
 				if minLinesBeforeDuplicate != 0 {
+					firstLine := line[:strings.IndexByte(line, '\n')]
 					var duplicate bool
 					for _, dup := range recent {
-						if dup == line {
+						if dup == firstLine {
 							duplicate = true
 							break
 						}
@@ -106,7 +107,7 @@ func dwarfFortress(ctx context.Context, ch chan<- string) {
 						continue
 					}
 					copy(recent[:], recent[1:])
-					recent[len(recent)-1] = line
+					recent[len(recent)-1] = firstLine
 				}
 				buffer = append(buffer, line)
 				if len(buffer)%100 == 0 && lastThreshold <= len(buffer)-100 {
