@@ -11,4 +11,6 @@ FROM benlubar/dwarffortress:df-ai-0.44.12-r1-update1
 
 COPY --from=builder /it_was_inevitable /usr/local/bin/it_was_inevitable
 
+RUN sed -i /df_linux/dfhack -e "s/ setarch / exec setarch /"
+
 CMD ["it_was_inevitable"]

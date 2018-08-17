@@ -4,7 +4,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"os"
 	"os/exec"
 	"strings"
 	"syscall"
@@ -16,6 +18,7 @@ import (
 
 func dwarfFortress(ctx context.Context, ch chan<- string) {
 	addch := make(chan string, 100)
+	debugch := make(chan struct{})
 	buffer := make([]string, 0, maxQueuedLines)
 	go watchLog(ctx, addch)
 
@@ -98,6 +101,14 @@ func dwarfFortress(ctx context.Context, ch chan<- string) {
 			case err := <-exited:
 				log.Println("Dwarf Fortress process exited:", err)
 				return
+			case <-debugch:
+				if err := cmd.Process.Signal(syscall.SIGKILL); err != nil {
+					log.Println("Sending SIGKILL:", err)
+				}
+				if err := os.Remove("/df_linux/df-ai-debug.log"); err != nil {
+					log.Println("Removing debug log:", err)
+				}
+				return
 			}
 		}
 	}
@@ -112,6 +123,34 @@ func dwarfFortress(ctx context.Context, ch chan<- string) {
 		runGame()
 	}
 
+}
+
+func watchDebug(ctx context.Context, ch chan<- struct{}) {
+	for {
+		// Wait at least a minute between kills to make sure there's time to clean up.
+		time.Sleep(time.Minute)
+
+		f, err := tail.TailFile("/df_linux/df-ai-debug.log", tail.Config{
+			Follow: true,
+		})
+		if err != nil {
+			panic(err)
+		}
+
+		first := <-f.Lines
+		log.Println("df-ai crashed! debug log follows:")
+		go func() {
+			// ignore error
+			_ = f.StopAtEOF()
+			f.Cleanup()
+		}()
+		fmt.Println(first.Text)
+		for line := range f.Lines {
+			fmt.Println(line.Text)
+		}
+
+		ch <- struct{}{}
+	}
 }
 
 func watchLog(ctx context.Context, ch chan<- string) {
