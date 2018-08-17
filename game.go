@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"html"
 	"log"
 	"os"
 	"os/exec"
@@ -56,7 +57,6 @@ func dwarfFortress(ctx context.Context, client *mastodon.Client, ch chan<- strin
 
 		runGame(ctx, buffer, ch, addch, debugch)
 	}
-
 }
 
 func pullExistingStatuses(ctx context.Context, buffer *dataBuffer, client *mastodon.Client) {
@@ -78,8 +78,12 @@ func pullExistingStatuses(ctx context.Context, buffer *dataBuffer, client *masto
 
 	i := minLinesBeforeDuplicate - 1
 	for _, s := range statuses {
-		if j := strings.IndexByte(s.Content, '\n'); j != -1 {
-			buffer.recent[i] = s.Content[:j]
+		if !strings.HasPrefix(s.Content, "<p>") {
+			continue
+		}
+		if j := strings.Index(s.Content, "</p>"); j != -1 {
+			buffer.recent[i] = html.UnescapeString(s.Content[len("<p>"):j])
+			log.Println("Loaded recent toot:", buffer.recent[i])
 			i--
 		}
 	}
@@ -108,6 +112,7 @@ func runGame(ctx context.Context, buffer *dataBuffer, ch chan<- string, addch <-
 	}
 
 	buffer.running = true
+	first := true
 
 	for {
 		var nextLine string
@@ -139,6 +144,11 @@ func runGame(ctx context.Context, buffer *dataBuffer, ch chan<- string, addch <-
 		case line := <-addch:
 			if isDuplicate(buffer, line) {
 				continue
+			}
+
+			if first || len(buffer.queue) == 0 {
+				log.Println("First toot queued:", line)
+				first = false
 			}
 
 			buffer.queue = append(buffer.queue, line)
@@ -218,8 +228,7 @@ func watchDebug(ctx context.Context, ch chan<- struct{}) {
 		case first := <-f.Lines:
 			log.Println("df-ai crashed! debug log follows:")
 			go func() {
-				// ignore error
-				logError(f.StopAtEOF(), "Reading crash log:")
+				f.Kill(f.StopAtEOF())
 				f.Cleanup()
 			}()
 			fmt.Println(first.Text)
@@ -247,7 +256,6 @@ func watchLog(ctx context.Context, ch chan<- string) {
 		f.Kill(ctx.Err())
 	}()
 
-	first := true
 	for line := range f.Lines {
 		if line.Err != nil {
 			log.Println(line.Err)
@@ -258,10 +266,6 @@ func watchLog(ctx context.Context, ch chan<- string) {
 
 		// Chatter messages are formatted as "Urist McName, Occupation: It was inevitable."
 		if i, j := strings.Index(text, ", "), strings.Index(text, ": "); i > 0 && j > i {
-			if first {
-				log.Println("First chatter:", text)
-				first = false
-			}
 			ch <- text[j+2:] + "\n\n\u2014 " + text[:j]
 		}
 	}
