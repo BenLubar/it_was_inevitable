@@ -16,6 +16,9 @@ const (
 	// Unpause DF-AI when the queue length gets below this threshold.
 	minQueuedLines = 500
 
+	// Minimum number of lines before a duplicate is allowed.
+	minLinesBeforeDuplicate = 10
+
 	// Make a toot this often.
 	tootInterval = 5 * time.Minute
 )

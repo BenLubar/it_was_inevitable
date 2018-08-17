@@ -20,6 +20,8 @@ func dwarfFortress(ctx context.Context, ch chan<- string) {
 	addch := make(chan string, 100)
 	debugch := make(chan struct{})
 	buffer := make([]string, 0, maxQueuedLines)
+	lastThreshold := 0
+	var recent [minLinesBeforeDuplicate]string
 	go watchLog(ctx, addch)
 
 	runGame := func() {
@@ -78,6 +80,10 @@ func dwarfFortress(ctx context.Context, ch chan<- string) {
 				}
 			case out <- nextLine:
 				buffer = buffer[1:]
+				if len(buffer)%100 == 0 && lastThreshold >= len(buffer)+100 {
+					lastThreshold = len(buffer)
+					log.Println(len(buffer), "lines are buffered.")
+				}
 				if len(buffer) < minQueuedLines {
 					if !wasRunning {
 						log.Println("Unsuspending Dwarf Fortress")
@@ -88,7 +94,25 @@ func dwarfFortress(ctx context.Context, ch chan<- string) {
 					}
 				}
 			case line := <-addch:
+				if minLinesBeforeDuplicate != 0 {
+					var duplicate bool
+					for _, dup := range recent {
+						if dup == line {
+							duplicate = true
+							break
+						}
+					}
+					if duplicate {
+						continue
+					}
+					copy(recent[:], recent[1:])
+					recent[len(recent)-1] = line
+				}
 				buffer = append(buffer, line)
+				if len(buffer)%100 == 0 && lastThreshold <= len(buffer)-100 {
+					lastThreshold = len(buffer)
+					log.Println(len(buffer), "lines are buffered.")
+				}
 				if len(buffer) > maxQueuedLines {
 					if wasRunning {
 						log.Println("Suspending Dwarf Fortress")
