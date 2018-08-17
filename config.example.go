@@ -21,7 +21,7 @@ const (
 )
 
 var config = &mastodon.Config{
-	Server:       "mastodon.example",
+	Server:       "https://mastodon.example",
 	ClientID:     "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 	ClientSecret: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 	AccessToken:  "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
