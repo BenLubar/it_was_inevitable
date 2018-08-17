@@ -37,9 +37,10 @@ func main() {
 	client := mastodon.NewClient(config)
 
 	ch := make(chan string)
-	go dwarfFortress(ctx, ch)
+	go dwarfFortress(ctx, client, ch)
 
 	initialDelay := tootInterval - time.Duration(time.Now().UnixNano())%tootInterval
+	log.Println("Waiting", initialDelay, "before making first toot.")
 	time.Sleep(initialDelay)
 
 	for {

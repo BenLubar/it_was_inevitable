@@ -14,129 +14,38 @@ import (
 
 	"github.com/hpcloud/tail"
 	"github.com/kr/pty"
+	"github.com/mattn/go-mastodon"
 )
 
-func dwarfFortress(ctx context.Context, ch chan<- string) {
+func logError(err error, message string) {
+	if err != nil {
+		log.Println(message, err)
+	}
+}
+
+func logErrorD(f func() error, message string) {
+	logError(f(), message)
+}
+
+type dataBuffer struct {
+	queue     []string
+	threshold int
+	recent    [minLinesBeforeDuplicate]string
+	running   bool
+}
+
+func dwarfFortress(ctx context.Context, client *mastodon.Client, ch chan<- string) {
 	addch := make(chan string, 100)
 	debugch := make(chan struct{})
-	buffer := make([]string, 0, maxQueuedLines)
-	lastThreshold := 0
-	var recent [minLinesBeforeDuplicate]string
-	go watchLog(ctx, addch)
 
-	runGame := func() {
-		cmd := exec.CommandContext(ctx, "/df_linux/dfhack")
-		cmd.Env = append(cmd.Env, "TERM=xterm-256color")
-		cmd.Dir = "/df_linux"
-
-		f, err := pty.Start(cmd)
-		if err != nil {
-			panic(err)
-		}
-		defer func() {
-			if err := f.Close(); err != nil {
-				log.Println(err)
-			}
-		}()
-
-		exited := make(chan error, 1)
-		go func() {
-			exited <- cmd.Wait()
-		}()
-
-		defer func() {
-			if err := clearSaves(); err != nil {
-				log.Println("Removing saved worlds:", err)
-			}
-		}()
-
-		wasRunning := true
-
-		for {
-			var nextLine string
-			out := ch
-			if len(buffer) == 0 {
-				out = nil
-			} else {
-				nextLine = buffer[0]
-			}
-
-			select {
-			case <-time.After(time.Minute * 30):
-				if wasRunning {
-					log.Println("30 minutes without any log output. Assuming DF is stuck. Resetting.")
-					if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
-						log.Println("Sending SIGTERM:", err)
-					}
-					select {
-					case <-time.After(time.Minute):
-						log.Println("Process has not exited. Killing.")
-						if err := cmd.Process.Signal(syscall.SIGKILL); err != nil {
-							log.Println("Sending SIGKILL:", err)
-						}
-					case <-exited:
-						return
-					}
-				}
-			case out <- nextLine:
-				buffer = buffer[1:]
-				if len(buffer)%100 == 0 && lastThreshold >= len(buffer)+100 {
-					lastThreshold = len(buffer)
-					log.Println(len(buffer), "lines are buffered.")
-				}
-				if len(buffer) < minQueuedLines {
-					if !wasRunning {
-						log.Println("Unsuspending Dwarf Fortress")
-						wasRunning = true
-					}
-					if err := cmd.Process.Signal(syscall.SIGCONT); err != nil {
-						log.Println("Sending SIGCONT:", err)
-					}
-				}
-			case line := <-addch:
-				if minLinesBeforeDuplicate != 0 {
-					firstLine := line[:strings.IndexByte(line, '\n')]
-					var duplicate bool
-					for _, dup := range recent {
-						if dup == firstLine {
-							duplicate = true
-							break
-						}
-					}
-					if duplicate {
-						continue
-					}
-					copy(recent[:], recent[1:])
-					recent[len(recent)-1] = firstLine
-				}
-				buffer = append(buffer, line)
-				if len(buffer)%100 == 0 && lastThreshold <= len(buffer)-100 {
-					lastThreshold = len(buffer)
-					log.Println(len(buffer), "lines are buffered.")
-				}
-				if len(buffer) > maxQueuedLines {
-					if wasRunning {
-						log.Println("Suspending Dwarf Fortress")
-						wasRunning = false
-					}
-					if err := cmd.Process.Signal(syscall.SIGSTOP); err != nil {
-						log.Println("Sending SIGSTOP:", err)
-					}
-				}
-			case err := <-exited:
-				log.Println("Dwarf Fortress process exited:", err)
-				return
-			case <-debugch:
-				if err := cmd.Process.Signal(syscall.SIGKILL); err != nil {
-					log.Println("Sending SIGKILL:", err)
-				}
-				if err := os.Remove("/df_linux/df-ai-debug.log"); err != nil {
-					log.Println("Removing debug log:", err)
-				}
-				return
-			}
-		}
+	buffer := &dataBuffer{
+		queue: make([]string, 0, maxQueuedLines),
 	}
+
+	go watchLog(ctx, addch)
+	go watchDebug(ctx, debugch)
+
+	pullExistingStatuses(ctx, buffer, client)
 
 	for {
 		select {
@@ -145,15 +54,156 @@ func dwarfFortress(ctx context.Context, ch chan<- string) {
 		default:
 		}
 
-		runGame()
+		runGame(ctx, buffer, ch, addch, debugch)
 	}
 
+}
+
+func pullExistingStatuses(ctx context.Context, buffer *dataBuffer, client *mastodon.Client) {
+	if minLinesBeforeDuplicate == 0 {
+		return
+	}
+
+	account, err := client.GetAccountCurrentUser(ctx)
+	if err != nil {
+		panic(err)
+	}
+
+	statuses, err := client.GetAccountStatuses(ctx, account.ID, &mastodon.Pagination{
+		Limit: minLinesBeforeDuplicate,
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	i := minLinesBeforeDuplicate - 1
+	for _, s := range statuses {
+		if j := strings.IndexByte(s.Content, '\n'); j != -1 {
+			buffer.recent[i] = s.Content[:j]
+			i--
+		}
+	}
+}
+
+func runGame(ctx context.Context, buffer *dataBuffer, ch chan<- string, addch <-chan string, debugch <-chan struct{}) {
+	cmd := exec.CommandContext(ctx, "/df_linux/dfhack")
+	cmd.Env = append(cmd.Env, "TERM=xterm-256color")
+	cmd.Dir = "/df_linux"
+
+	f, err := pty.Start(cmd)
+	if err != nil {
+		panic(err)
+	}
+	defer logErrorD(f.Close, "Closing Pseudo-TTY:")
+
+	exited := make(chan error, 1)
+	go func() {
+		exited <- cmd.Wait()
+	}()
+
+	defer logErrorD(clearSaves, "Removing saved worlds:")
+
+	signal := func(s os.Signal) {
+		logError(cmd.Process.Signal(s), "Sending "+s.String()+":")
+	}
+
+	buffer.running = true
+
+	for {
+		var nextLine string
+		out := ch
+		if len(buffer.queue) == 0 {
+			out = nil
+		} else {
+			nextLine = buffer.queue[0]
+		}
+
+		select {
+		case <-time.After(time.Minute * 30):
+			if buffer.running {
+				log.Println("30 minutes without any log output. Assuming DF is stuck. Resetting.")
+				signal(syscall.SIGTERM)
+				select {
+				case <-time.After(time.Minute):
+					log.Println("Process has not exited. Killing.")
+					signal(syscall.SIGKILL)
+				case <-exited:
+					return
+				}
+			}
+
+		case out <- nextLine:
+			buffer.queue = buffer.queue[1:]
+			checkQueueLength(buffer, signal)
+
+		case line := <-addch:
+			if isDuplicate(buffer, line) {
+				continue
+			}
+
+			buffer.queue = append(buffer.queue, line)
+			checkQueueLength(buffer, signal)
+
+		case err := <-exited:
+			log.Println("Dwarf Fortress process exited:", err)
+			return
+
+		case <-debugch:
+			signal(syscall.SIGKILL)
+			if err := os.Remove("/df_linux/df-ai-debug.log"); err != nil {
+				log.Println("Removing debug log:", err)
+			}
+			return
+		}
+	}
+}
+
+func isDuplicate(buffer *dataBuffer, line string) bool {
+	if minLinesBeforeDuplicate == 0 {
+		return false
+	}
+
+	firstLine := line[:strings.IndexByte(line, '\n')]
+	for _, dup := range buffer.recent {
+		if dup == firstLine {
+			return true
+		}
+	}
+
+	copy(buffer.recent[:], buffer.recent[1:])
+	buffer.recent[len(buffer.recent)-1] = firstLine
+	return false
+}
+
+func checkQueueLength(buffer *dataBuffer, signal func(os.Signal)) {
+	if l := len(buffer.queue); l%100 == 0 && (buffer.threshold >= l+100 || buffer.threshold <= l-100) {
+		buffer.threshold = l
+		log.Println(l, "lines are buffered.")
+	}
+
+	if len(buffer.queue) < minQueuedLines {
+		if !buffer.running {
+			log.Println("Unsuspending Dwarf Fortress")
+			buffer.running = true
+		}
+		signal(syscall.SIGCONT)
+	} else if len(buffer.queue) > maxQueuedLines {
+		if buffer.running {
+			log.Println("Suspending Dwarf Fortress")
+			buffer.running = false
+		}
+		signal(syscall.SIGSTOP)
+	}
 }
 
 func watchDebug(ctx context.Context, ch chan<- struct{}) {
 	for {
 		// Wait at least a minute between kills to make sure there's time to clean up.
-		time.Sleep(time.Minute)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(time.Minute):
+		}
 
 		f, err := tail.TailFile("/df_linux/df-ai-debug.log", tail.Config{
 			Follow: true,
@@ -162,19 +212,23 @@ func watchDebug(ctx context.Context, ch chan<- struct{}) {
 			panic(err)
 		}
 
-		first := <-f.Lines
-		log.Println("df-ai crashed! debug log follows:")
-		go func() {
-			// ignore error
-			_ = f.StopAtEOF()
-			f.Cleanup()
-		}()
-		fmt.Println(first.Text)
-		for line := range f.Lines {
-			fmt.Println(line.Text)
-		}
+		select {
+		case <-ctx.Done():
+			return
+		case first := <-f.Lines:
+			log.Println("df-ai crashed! debug log follows:")
+			go func() {
+				// ignore error
+				logError(f.StopAtEOF(), "Reading crash log:")
+				f.Cleanup()
+			}()
+			fmt.Println(first.Text)
+			for line := range f.Lines {
+				fmt.Println(line.Text)
+			}
 
-		ch <- struct{}{}
+			ch <- struct{}{}
+		}
 	}
 }
 
@@ -193,6 +247,7 @@ func watchLog(ctx context.Context, ch chan<- string) {
 		f.Kill(ctx.Err())
 	}()
 
+	first := true
 	for line := range f.Lines {
 		if line.Err != nil {
 			log.Println(line.Err)
@@ -203,6 +258,10 @@ func watchLog(ctx context.Context, ch chan<- string) {
 
 		// Chatter messages are formatted as "Urist McName, Occupation: It was inevitable."
 		if i, j := strings.Index(text, ", "), strings.Index(text, ": "); i > 0 && j > i {
+			if first {
+				log.Println("First chatter:", text)
+				first = false
+			}
 			ch <- text[j+2:] + "\n\n\u2014 " + text[:j]
 		}
 	}
