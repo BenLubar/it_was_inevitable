@@ -39,14 +39,18 @@ func main() {
 	ch := make(chan string)
 	go dwarfFortress(ctx, client, ch)
 
-	initialDelay := tootInterval - time.Duration(time.Now().UnixNano())%tootInterval
+	initialDelay := nextDelay()
 	log.Println("Waiting", initialDelay, "before making first toot.")
 	time.Sleep(initialDelay)
 
 	for {
 		makeToot(ctx, client, <-ch)
-		time.Sleep(tootInterval)
+		time.Sleep(nextDelay())
 	}
+}
+
+func nextDelay() time.Duration {
+	return tootInterval - time.Duration(time.Now().UnixNano())%tootInterval
 }
 
 func makeToot(ctx context.Context, client *mastodon.Client, message string) {
