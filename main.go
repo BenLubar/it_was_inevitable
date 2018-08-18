@@ -9,8 +9,6 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
-
-	"github.com/mattn/go-mastodon"
 )
 
 func main() {
@@ -23,41 +21,51 @@ func main() {
 		sigch := make(chan os.Signal, 1)
 		defer signal.Stop(sigch)
 
-		signal.Notify(sigch, os.Interrupt, syscall.SIGTERM)
+		signal.Notify(sigch, syscall.SIGINT, syscall.SIGTERM)
 
 		select {
 		case sig := <-sigch:
-			log.Println("Caught", sig, "- cleaning up")
+			log.Println(sig, "- cleaning up")
 		case <-ctx.Done():
 		}
 
 		cancel()
 	}()
 
-	client := mastodon.NewClient(config)
+	buffer := &dataBuffer{
+		queue: make([]string, 0, maxQueuedLines),
+	}
+
+	client := initClient()
+	pullExistingStatuses(ctx, buffer, client)
 
 	ch := make(chan string)
-	go dwarfFortress(ctx, client, ch)
+	go dwarfFortress(ctx, buffer, ch)
 
 	initialDelay := nextDelay()
 	log.Println("Waiting", initialDelay, "before making first toot.")
 	time.Sleep(initialDelay)
 
 	for {
-		makeToot(ctx, client, <-ch)
+		var line string
+		select {
+		case <-ctx.Done():
+			return
+		case line = <-ch:
+		default:
+			log.Println("Warning: no toots are ready")
+			select {
+			case <-ctx.Done():
+				return
+			case line = <-ch:
+			}
+		}
+
+		makeToot(ctx, client, line)
 		time.Sleep(nextDelay())
 	}
 }
 
 func nextDelay() time.Duration {
 	return tootInterval - time.Duration(time.Now().UnixNano())%tootInterval
-}
-
-func makeToot(ctx context.Context, client *mastodon.Client, message string) {
-	_, err := client.PostStatus(ctx, &mastodon.Toot{
-		Status: message,
-	})
-	if err != nil {
-		log.Println(err)
-	}
 }

@@ -5,7 +5,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"html"
 	"log"
 	"os"
 	"os/exec"
@@ -15,7 +14,6 @@ import (
 
 	"github.com/hpcloud/tail"
 	"github.com/kr/pty"
-	"github.com/mattn/go-mastodon"
 )
 
 func logError(err error, message string) {
@@ -35,18 +33,12 @@ type dataBuffer struct {
 	running   bool
 }
 
-func dwarfFortress(ctx context.Context, client *mastodon.Client, ch chan<- string) {
+func dwarfFortress(ctx context.Context, buffer *dataBuffer, ch chan<- string) {
 	addch := make(chan string, 100)
 	debugch := make(chan struct{})
 
-	buffer := &dataBuffer{
-		queue: make([]string, 0, maxQueuedLines),
-	}
-
 	go watchLog(ctx, addch)
 	go watchDebug(ctx, debugch)
-
-	pullExistingStatuses(ctx, buffer, client)
 
 	for {
 		select {
@@ -56,36 +48,6 @@ func dwarfFortress(ctx context.Context, client *mastodon.Client, ch chan<- strin
 		}
 
 		runGame(ctx, buffer, ch, addch, debugch)
-	}
-}
-
-func pullExistingStatuses(ctx context.Context, buffer *dataBuffer, client *mastodon.Client) {
-	if minLinesBeforeDuplicate == 0 {
-		return
-	}
-
-	account, err := client.GetAccountCurrentUser(ctx)
-	if err != nil {
-		panic(err)
-	}
-
-	statuses, err := client.GetAccountStatuses(ctx, account.ID, &mastodon.Pagination{
-		Limit: minLinesBeforeDuplicate,
-	})
-	if err != nil {
-		panic(err)
-	}
-
-	i := minLinesBeforeDuplicate - 1
-	for _, s := range statuses {
-		if !strings.HasPrefix(s.Content, "<p>") {
-			continue
-		}
-		if j := strings.Index(s.Content, "</p>"); j != -1 {
-			buffer.recent[i] = html.UnescapeString(s.Content[len("<p>"):j])
-			log.Println("Loaded recent toot:", buffer.recent[i])
-			i--
-		}
 	}
 }
 

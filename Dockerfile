@@ -5,7 +5,9 @@ COPY *.go /go/src/github.com/BenLubar/it_was_inevitable/
 WORKDIR /go/src/github.com/BenLubar/it_was_inevitable
 
 RUN go get -d
-RUN CGO_ENABLED=0 go build -a -o /it_was_inevitable
+
+ARG tag=
+RUN CGO_ENABLED=0 go build -a -tags "$tag" -o /it_was_inevitable
 
 FROM benlubar/dwarffortress:df-ai-0.44.12-r1-update1
 

@@ -1,5 +1,5 @@
 // +build example
-// [Remove the previous line to enable this file.]
+// [Change the tag in the previous line to enable this file.]
 
 package main
 
@@ -17,10 +17,10 @@ const (
 	minQueuedLines = 500
 
 	// Minimum number of lines before a duplicate is allowed.
-	minLinesBeforeDuplicate = 10
+	minLinesBeforeDuplicate = 500
 
 	// Make a toot this often.
-	tootInterval = 5 * time.Minute
+	tootInterval = 5 * time.Second
 )
 
 var config = &mastodon.Config{
