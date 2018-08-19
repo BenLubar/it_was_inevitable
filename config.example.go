@@ -19,6 +19,15 @@ const (
 	// Minimum number of lines before a duplicate is allowed.
 	minLinesBeforeDuplicate = 500
 
+	// Maximum number of "fuzzy" (some words changed) duplicates allowed.
+	maxFuzzyDuplicates = 5
+
+	// Number of lines to remember for "fuzzy" duplicate checking.
+	fuzzyDuplicateWindow = 10
+
+	// Maximum number of words that can differ in a "fuzzy" duplicate.
+	maxFuzzyDifferentWords = 2
+
 	// Make a toot this often.
 	tootInterval = 5 * time.Second
 )

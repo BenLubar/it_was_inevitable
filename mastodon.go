@@ -16,7 +16,7 @@ func initClient() *mastodon.Client {
 }
 
 func pullExistingStatuses(ctx context.Context, buffer *dataBuffer, client *mastodon.Client) {
-	if minLinesBeforeDuplicate == 0 {
+	if minLinesBeforeDuplicate == 0 && fuzzyDuplicateWindow == 0 {
 		return
 	}
 
@@ -26,6 +26,7 @@ func pullExistingStatuses(ctx context.Context, buffer *dataBuffer, client *masto
 	}
 
 	i := minLinesBeforeDuplicate - 1
+	j := fuzzyDuplicateWindow - 1
 
 	pg := &mastodon.Pagination{}
 
@@ -41,12 +42,21 @@ func pullExistingStatuses(ctx context.Context, buffer *dataBuffer, client *masto
 			if !strings.HasPrefix(s.Content, "<p>") {
 				continue
 			}
-			if j := strings.Index(s.Content, "</p>"); j != -1 {
-				buffer.recent[i] = html.UnescapeString(s.Content[len("<p>"):j])
-				log.Println("Loaded recent toot:", buffer.recent[i])
-				i--
+			if k := strings.Index(s.Content, "</p>"); k != -1 {
+				line := html.UnescapeString(s.Content[len("<p>"):k])
+				log.Println("Loaded recent toot:", line)
 
-				if i < 0 {
+				if i >= 0 {
+					buffer.recent[i] = line
+					i--
+				}
+
+				if j >= 0 {
+					buffer.fuzzy[j] = strings.Fields(line)
+					j--
+				}
+
+				if i < 0 && j < 0 {
 					return
 				}
 			}
@@ -55,10 +65,16 @@ func pullExistingStatuses(ctx context.Context, buffer *dataBuffer, client *masto
 }
 
 func makeToot(ctx context.Context, client *mastodon.Client, message string) {
-	_, err := client.PostStatus(ctx, &mastodon.Toot{
-		Status: message,
-	})
-	if err != nil {
-		log.Println(err)
+	for attempts := 0; attempts < 5; attempts++ {
+		_, err := client.PostStatus(ctx, &mastodon.Toot{
+			Status: message,
+		})
+		if err == nil {
+			return
+		}
+
+		log.Println("Failed to make toot:", err)
+		log.Println("Attempt", attempts+1, "of 5.")
 	}
+	log.Println("Giving up on toot:", message)
 }

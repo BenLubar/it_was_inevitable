@@ -30,6 +30,7 @@ type dataBuffer struct {
 	queue     []string
 	threshold int
 	recent    [minLinesBeforeDuplicate]string
+	fuzzy     [fuzzyDuplicateWindow][]string
 	running   bool
 }
 
@@ -131,7 +132,7 @@ func runGame(ctx context.Context, buffer *dataBuffer, ch chan<- string, addch <-
 }
 
 func isDuplicate(buffer *dataBuffer, line string) bool {
-	if minLinesBeforeDuplicate == 0 {
+	if minLinesBeforeDuplicate == 0 && fuzzyDuplicateWindow == 0 {
 		return false
 	}
 
@@ -142,9 +143,42 @@ func isDuplicate(buffer *dataBuffer, line string) bool {
 		}
 	}
 
-	copy(buffer.recent[:], buffer.recent[1:])
-	buffer.recent[len(buffer.recent)-1] = firstLine
+	firstLineWords := strings.Fields(firstLine)
+	fuzzy := 0
+	for _, dup := range buffer.fuzzy {
+		if isFuzzyDuplicate(dup, firstLineWords) {
+			fuzzy++
+		}
+	}
+	if fuzzy > maxFuzzyDuplicates {
+		return true
+	}
+
+	if len(buffer.recent) != 0 {
+		copy(buffer.recent[:], buffer.recent[1:])
+		buffer.recent[len(buffer.recent)-1] = firstLine
+	}
+	if len(buffer.fuzzy) != 0 {
+		copy(buffer.fuzzy[:], buffer.fuzzy[1:])
+		buffer.fuzzy[len(buffer.fuzzy)-1] = firstLineWords
+	}
 	return false
+}
+
+func isFuzzyDuplicate(dup, words []string) bool {
+	// Only allow changes, not additions or deletions, to simplify this.
+	if len(dup) != len(words) {
+		return false
+	}
+
+	different := 0
+	for i := range dup {
+		if dup[i] != words[i] {
+			different++
+		}
+	}
+
+	return different <= maxFuzzyDifferentWords
 }
 
 func checkQueueLength(buffer *dataBuffer, signal func(os.Signal)) {
