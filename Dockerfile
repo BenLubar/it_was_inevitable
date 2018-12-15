@@ -1,4 +1,4 @@
-FROM golang:1.11.2 as builder
+FROM golang:1.11.3 as builder
 
 COPY *.go /go/src/github.com/BenLubar/it_was_inevitable/
 
