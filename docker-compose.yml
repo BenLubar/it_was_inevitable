@@ -1,0 +1,20 @@
+version: "3"
+
+services:
+  it_was_inevitable:
+    restart: always
+    image: benlubar/it_was_inevitable
+    command:
+      - '-max-queued-lines=1000'
+      - '-min-queued-lines=500'
+      - '-min-lines-before-duplicate=500'
+      - '-max-fuzzy-duplicates=5'
+      - '-fuzzy-duplicate-window=25'
+      - '-max-fuzzy-different-words=2'
+      - '-toot-interval=5m'
+      - '-server=https://mastodon.example'
+      - '-client-id=[missing]'
+      - '-client-secret=[missing]'
+      - '-access-token=[missing]'
+    security_opt:
+      seccomp: ./seccomp.json

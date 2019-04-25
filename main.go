@@ -33,7 +33,9 @@ func main() {
 	}()
 
 	buffer := &dataBuffer{
-		queue: make([]string, 0, maxQueuedLines),
+		recent: make([]string, minLinesBeforeDuplicate),
+		fuzzy:  make([][]string, fuzzyDuplicateWindow),
+		queue:  make([]string, 0, maxQueuedLines),
 	}
 
 	client := initClient()

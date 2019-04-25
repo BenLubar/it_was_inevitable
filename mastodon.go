@@ -11,6 +11,8 @@ import (
 	"github.com/mattn/go-mastodon"
 )
 
+const isExampleMode = false
+
 func initClient() *mastodon.Client {
 	return mastodon.NewClient(config)
 }

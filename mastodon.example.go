@@ -7,6 +7,8 @@ import (
 	"log"
 )
 
+const isExampleMode = true
+
 func initClient() struct{} {
 	return struct{}{}
 }

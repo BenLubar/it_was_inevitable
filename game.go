@@ -29,8 +29,8 @@ func logErrorD(f func() error, message string) {
 type dataBuffer struct {
 	queue     []string
 	threshold int
-	recent    [minLinesBeforeDuplicate]string
-	fuzzy     [fuzzyDuplicateWindow][]string
+	recent    []string
+	fuzzy     [][]string
 	running   bool
 }
 
