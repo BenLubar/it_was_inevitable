@@ -12,6 +12,8 @@ import (
 )
 
 func main() {
+	parseFlags()
+
 	cleanup()
 
 	ctx, cancel := context.WithCancel(context.Background())
