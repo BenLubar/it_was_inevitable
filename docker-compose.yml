@@ -17,4 +17,4 @@ services:
       - '-client-secret=[missing]'
       - '-access-token=[missing]'
     security_opt:
-      seccomp: ./seccomp.json
+      - 'seccomp:./seccomp.json'
