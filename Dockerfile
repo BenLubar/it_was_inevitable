@@ -14,6 +14,6 @@ FROM benlubar/dwarffortress:df-ai-0.44.12-r3
 
 COPY --from=builder /it_was_inevitable /usr/local/bin/it_was_inevitable
 
-RUN sed -i /df_linux/dfhack -e "s/ setarch / exec setarch /"
+RUN sed -i /df_linux/dfhack -e "s/ setarch .*Dwarf_Fortress/ exec\0/"
 
 ENTRYPOINT ["it_was_inevitable"]
