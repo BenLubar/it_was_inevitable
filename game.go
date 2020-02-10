@@ -53,7 +53,7 @@ func dwarfFortress(ctx context.Context, buffer *dataBuffer, ch chan<- string) {
 }
 
 func runGame(ctx context.Context, buffer *dataBuffer, ch chan<- string, addch <-chan string, debugch <-chan struct{}) {
-	cmd := exec.CommandContext(ctx, "/df_linux/dfhack")
+	cmd := exec.CommandContext(ctx, "/df_linux/dfhack", "--exec")
 	cmd.Env = append(cmd.Env, "TERM=xterm-256color")
 	cmd.Dir = "/df_linux"
 
