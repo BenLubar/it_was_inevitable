@@ -10,7 +10,6 @@ var dfaijson = []byte(`
 	"manage_nobles": true,
 	"no_quit": true,
 	"plan_allow_legacy": false,
-	"plan_verbosity": -1,
 	"random_embark": true,
 	"record_movie": false,
 	"write_console": false,
