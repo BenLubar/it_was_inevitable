@@ -12,6 +12,8 @@ RUN CGO_ENABLED=0 go build -o /it_was_inevitable
 
 FROM benlubar/dwarffortress:df-ai-0.47.03-beta1
 
+RUN echo -e '{\n\t"hide": true\n}' > /df_linux/dfhack-config/prerelease-warning.json
+
 COPY --from=builder /it_was_inevitable /usr/local/bin/it_was_inevitable
 
 ENTRYPOINT ["it_was_inevitable"]
