@@ -28,6 +28,11 @@ func cleanup() {
 	if err := ioutil.WriteFile("/df_linux/dfhack-config/df-ai.json", dfaijson, 0644); err != nil {
 		panic(err)
 	}
+
+	// Add our pauser script.
+	if err := ioutil.WriteFile("/df_linux/hack/scripts/pause-ai.lua", pauseailua, 0644); err != nil {
+		panic(err)
+	}
 }
 
 func clearSaves() error {
