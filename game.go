@@ -12,17 +12,14 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/BenLubar/dfhackrpc"
 	"github.com/hpcloud/tail"
 	"github.com/kr/pty"
 )
 
-func logError(err error, message string) bool {
+func logError(err error, message string) {
 	if err != nil {
 		log.Println(message, err)
-		return true
 	}
-	return false
 }
 
 func logErrorD(f func() error, message string) {
@@ -76,14 +73,6 @@ func runGame(ctx context.Context, buffer *dataBuffer, ch chan<- string, addch <-
 	signal := func(s os.Signal) {
 		logError(cmd.Process.Signal(s), "Sending "+s.String()+":")
 	}
-	command := func(cmd string, args ...string) {
-		client := dfhackrpc.NewClient(os.Stdout)
-		if logError(client.Connect(), "Connecting to RPC:") {
-			return
-		}
-		_, err := client.RunCommand(cmd, args...)
-		logError(err, "Sending RPC command "+cmd)
-	}
 
 	buffer.running = true
 	first := true
@@ -113,7 +102,7 @@ func runGame(ctx context.Context, buffer *dataBuffer, ch chan<- string, addch <-
 
 		case out <- nextLine:
 			buffer.queue = buffer.queue[1:]
-			checkQueueLength(buffer, command)
+			checkQueueLength(buffer, signal)
 
 		case line := <-addch:
 			if isDuplicate(buffer, line) {
@@ -126,7 +115,7 @@ func runGame(ctx context.Context, buffer *dataBuffer, ch chan<- string, addch <-
 			}
 
 			buffer.queue = append(buffer.queue, line)
-			checkQueueLength(buffer, command)
+			checkQueueLength(buffer, signal)
 
 		case err := <-exited:
 			log.Println("Dwarf Fortress process exited:", err)
@@ -192,7 +181,7 @@ func isFuzzyDuplicate(dup, words []string) bool {
 	return different <= maxFuzzyDifferentWords
 }
 
-func checkQueueLength(buffer *dataBuffer, command func(string, ...string)) {
+func checkQueueLength(buffer *dataBuffer, signal func(os.Signal)) {
 	if l := len(buffer.queue); l%100 == 0 && (buffer.threshold >= l+100 || buffer.threshold <= l-100) {
 		buffer.threshold = l
 		log.Println(l, "lines are buffered.")
@@ -203,13 +192,13 @@ func checkQueueLength(buffer *dataBuffer, command func(string, ...string)) {
 			log.Println("Unsuspending Dwarf Fortress")
 			buffer.running = true
 		}
-		command("devel/send-key", "A_RETURN_TO_ARENA")
+		signal(syscall.SIGCONT)
 	} else if len(buffer.queue) > maxQueuedLines {
 		if buffer.running {
 			log.Println("Suspending Dwarf Fortress")
 			buffer.running = false
 		}
-		command("pause-ai")
+		signal(syscall.SIGSTOP)
 	}
 }
 
