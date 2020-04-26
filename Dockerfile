@@ -10,7 +10,7 @@ COPY *.go /src/it_was_inevitable/
 
 RUN CGO_ENABLED=0 go build -o /it_was_inevitable
 
-FROM benlubar/dwarffortress:df-ai-0.47.04-beta1
+FROM benlubar/dwarffortress:df-ai-0.47.04-r1
 
 COPY --from=builder /it_was_inevitable /usr/local/bin/it_was_inevitable
 
