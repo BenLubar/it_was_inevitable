@@ -12,8 +12,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/creack/pty"
 	"github.com/hpcloud/tail"
-	"github.com/kr/pty"
 )
 
 func logError(err error, message string) {
