@@ -69,7 +69,8 @@ func pullExistingStatuses(ctx context.Context, buffer *dataBuffer, client *masto
 func makeToot(ctx context.Context, client *mastodon.Client, message string) {
 	for attempts := 0; attempts < 5; attempts++ {
 		_, err := client.PostStatus(ctx, &mastodon.Toot{
-			Status: message,
+			Status:     message,
+			Visibility: "unlisted",
 		})
 		if err == nil {
 			return
@@ -78,5 +79,6 @@ func makeToot(ctx context.Context, client *mastodon.Client, message string) {
 		log.Println("Failed to make toot:", err)
 		log.Println("Attempt", attempts+1, "of 5.")
 	}
+
 	log.Println("Giving up on toot:", message)
 }
